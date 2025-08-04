@@ -18,6 +18,52 @@ import {
 } from 'lucide-react';
 import './App.css';
 
+// Error boundary to handle Chrome extension errors
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    // Log error but don't break the app
+    console.log('Error caught by boundary:', error);
+  }
+
+  render(): React.ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 mb-4">Something went wrong</h1>
+            <p className="text-gray-600 mb-4">Please refresh the page to continue</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // Mock data for demonstration - in real app this would come from the smart contract
 const mockMembers = [
   { wallet: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU', reputation: 1250, role: 'Admin', upvotes: 45, downvotes: 2 },
@@ -44,6 +90,36 @@ function App() {
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [initialReputation, setInitialReputation] = useState(50);
+
+  // Global error handler to catch Chrome extension errors
+  useEffect(() => {
+    const handleError = (event: ErrorEvent | PromiseRejectionEvent): void => {
+      // Ignore errors from Chrome extensions
+      if (event instanceof ErrorEvent && event.error && event.error.message && 
+          (event.error.message.includes('chrome-extension') || 
+           event.error.message.includes('Cannot read properties of null'))) {
+        event.preventDefault();
+        console.log('Ignored Chrome extension error:', event.error);
+        return;
+      }
+      
+      if (event instanceof PromiseRejectionEvent && event.reason && event.reason.message && 
+          (event.reason.message.includes('chrome-extension') || 
+           event.reason.message.includes('Cannot read properties of null'))) {
+        event.preventDefault();
+        console.log('Ignored Chrome extension rejection:', event.reason);
+        return;
+      }
+    };
+
+    window.addEventListener('error', handleError as EventListener);
+    window.addEventListener('unhandledrejection', handleError as EventListener);
+
+    return () => {
+      window.removeEventListener('error', handleError as EventListener);
+      window.removeEventListener('unhandledrejection', handleError as EventListener);
+    };
+  }, []);
 
   const handleVote = async () => {
     setIsVoting(true);
@@ -80,7 +156,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -504,7 +581,8 @@ function App() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }
 
